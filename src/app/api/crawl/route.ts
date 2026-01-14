@@ -22,10 +22,7 @@ export async function POST(request: NextRequest) {
 
     const crawlId = generateCrawlId();
 
-    // Start crawl in background
-    startCrawl(siteUrl, crawlId).catch((error) => {
-      console.error('Crawl error:', error);
-    });
+    await startCrawl(siteUrl, crawlId);
 
     return NextResponse.json({ crawlId, status: 'initiated' });
   } catch (error) {

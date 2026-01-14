@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrawlStatus, getCrawlResults } from '@/lib/sf-crawler';
+import { getCrawlStatus, loadCrawlResults } from '@/lib/sf-crawler';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -12,19 +12,27 @@ export async function GET(request: NextRequest) {
   const status = getCrawlStatus(crawlId);
 
   if (!status) {
-    return NextResponse.json({ error: 'Crawl not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Crawl not found or expired' }, { status: 404 });
   }
 
   if (status.status !== 'complete') {
     return NextResponse.json({ error: 'Crawl not complete' }, { status: 400 });
   }
 
-  const results = getCrawlResults(crawlId);
+  try {
+    const results = await loadCrawlResults(crawlId);
 
-  return NextResponse.json({
-    siteUrl: status.siteUrl,
-    totalPages: results?.length || 0,
-    redirects: results || [],
-    crawlTime: Date.now() - status.startTime.getTime(),
-  });
+    return NextResponse.json({
+      siteUrl: status.siteUrl,
+      totalPages: results.length,
+      redirects: results,
+      crawlTime: Date.now() - status.startTime.getTime(),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to load results' },
+      { status: 500 }
+    );
+  }
 }
+
