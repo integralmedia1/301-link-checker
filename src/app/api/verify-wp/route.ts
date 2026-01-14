@@ -3,6 +3,7 @@ import { verifyWPCredentials } from '@/lib/wordpress-api';
 
 export async function POST(request: NextRequest) {
   try {
+
     const { siteUrl, username, appPassword } = await request.json();
 
     if (!siteUrl || !username || !appPassword) {
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     const result = await verifyWPCredentials({ siteUrl, username, appPassword });
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { status: result.valid ? 200 : result.status ?? 400 });
   } catch (error) {
     console.error('WP verification error:', error);
     return NextResponse.json(
@@ -22,7 +23,8 @@ export async function POST(request: NextRequest) {
         valid: false,
         message: error instanceof Error ? error.message : 'Verification failed',
       },
-      { status: 200 }
+      { status: 400 }
     );
   }
 }
+

@@ -17,25 +17,41 @@ interface WPTemplate {
   };
 }
 
-export async function verifyWPCredentials(credentials: WPCredentials): Promise<{ valid: boolean; message?: string }> {
+export async function verifyWPCredentials(
+  credentials: WPCredentials
+): Promise<{ valid: boolean; message?: string; status?: number }> {
+  const cleanSiteUrl = credentials.siteUrl.trim().replace(/\/+$/, '');
+  const cleanUsername = credentials.username.trim();
+  const cleanAppPassword = credentials.appPassword.replace(/\s+/g, '');
+
   try {
-    const response = await fetch(`${credentials.siteUrl}/wp-json/wp/v2/users/me`, {
+    const auth = Buffer.from(`${cleanUsername}:${cleanAppPassword}`).toString('base64');
+    const url = `${cleanSiteUrl}/wp-json/wp/v2/users/me`;
+
+    const response = await fetch(url, {
+      redirect: 'manual',
       headers: {
-        Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.appPassword}`).toString('base64')}`,
+        Authorization: `Basic ${auth}`,
       },
     });
 
-    if (response.ok) {
-      return { valid: true };
-    } else if (response.status === 401) {
-      return { valid: false, message: 'Invalid username or application password' };
-    } else {
-      return { valid: false, message: `API error: ${response.status}` };
+    const finalResponse = await followAuthRedirectIfNeeded(response, url, auth);
+
+    if (finalResponse.ok) {
+      return { valid: true, status: finalResponse.status };
     }
+
+    const body = await safeReadBody(finalResponse);
+    const message = body || finalResponse.statusText || `API error: ${finalResponse.status}`;
+    return { valid: false, status: finalResponse.status, message };
   } catch (error) {
-    return { valid: false, message: error instanceof Error ? error.message : 'Connection failed' };
+    return {
+      valid: false,
+      message: error instanceof Error ? error.message : 'Connection failed',
+    };
   }
 }
+
 
 export async function findAndReplaceUrl(
   credentials: WPCredentials,
@@ -207,6 +223,35 @@ async function clearWPCache(siteUrl: string, auth: string): Promise<void> {
   }
 }
 
+async function safeReadBody(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return '';
+  }
+}
+
+async function followAuthRedirectIfNeeded(
+  response: Response,
+  originalUrl: string,
+  auth: string
+): Promise<Response> {
+  if (![301, 302, 303, 307, 308].includes(response.status)) {
+    return response;
+  }
+
+  const location = response.headers.get('location');
+  if (!location) return response;
+
+  const target = new URL(location, originalUrl).toString();
+  return fetch(target, {
+    headers: {
+      Authorization: `Basic ${auth}`,
+    },
+  });
+}
+
 function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
