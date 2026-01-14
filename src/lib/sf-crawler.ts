@@ -20,13 +20,25 @@ interface CrawlSession {
 // In-memory session store (replace with Redis for production)
 const sessions = new Map<string, CrawlSession>();
 
-const CRAWL_OUTPUT_DIR = '/tmp/sf-crawls';
+const CRAWL_OUTPUT_DIR = process.env.CRAWL_OUTPUT_DIR || path.join(process.cwd(), 'crawl-output');
+const CRAWL_TIMEOUT_MS = Number(process.env.CRAWL_TIMEOUT_MS ?? 21600000); // default 6h
 
 export function generateCrawlId(): string {
   return `crawl-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 }
 
+export function hasRunningCrawl(): boolean {
+  for (const session of sessions.values()) {
+    if (session.status === 'running') return true;
+  }
+  return false;
+}
+
 export async function startCrawl(siteUrl: string, crawlId: string): Promise<void> {
+  if (hasRunningCrawl()) {
+    throw new Error('Another crawl is already running');
+  }
+
   const outputDir = path.join(CRAWL_OUTPUT_DIR, crawlId);
 
   // Create session
@@ -57,7 +69,7 @@ export async function startCrawl(siteUrl: string, crawlId: string): Promise<void
       2>&1`;
 
     try {
-      await execAsync(cmd, { timeout: 300000 }); // 5 minute timeout
+      await execAsync(cmd, { timeout: CRAWL_TIMEOUT_MS });
     } catch (dockerError) {
       // If Docker fails, fall back to mock data for development
       console.warn('Docker SF CLI not available, using mock data:', dockerError);

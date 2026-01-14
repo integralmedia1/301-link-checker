@@ -2,12 +2,17 @@ version: '3.8'
 
 services:
   sf-crawler:
-    build: ./docker
+    image: ghcr.io/integralmedia1/301-link-checker/sf-crawler:sf-19.8
     container_name: sf-crawler
     volumes:
       - ./crawl-output:/crawl
+      - ./sf-config:/root/.ScreamingFrogSEOSpider/
     environment:
-      - JAVA_OPTS=-Xmx2g
-    # Keep container running for exec commands
+      - SF_LICENSE_NAME
+      - SF_LICENSE_KEY
+      - SF_MEMORY=2g
+    # Override this command per crawl. Example:
+    # command: ["screamingfrogseospider", "--headless", "--crawl", "https://example.com", "--output-folder", "/crawl", "--export-tabs", "Response Codes:All"]
     command: ["sleep", "infinity"]
     restart: unless-stopped
+

@@ -21,22 +21,26 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and install Screaming Frog (adjust version as needed)
-RUN wget -q https://download.screamingfrog.co.uk/products/seo-spider/screamingfrogseospider_21.3_all.deb \
-    && dpkg -i screamingfrogseospider_21.3_all.deb \
-    && rm screamingfrogseospider_21.3_all.deb \
+# Download and install Screaming Frog 19.8
+ENV SF_VERSION=19.8
+RUN wget -q https://web.archive.org/web/20240506010305/https://download.screamingfrog.co.uk/products/seo-spider/screamingfrogseospider_${SF_VERSION}_all.deb \
+    && dpkg -i screamingfrogseospider_${SF_VERSION}_all.deb \
+    && rm screamingfrogseospider_${SF_VERSION}_all.deb \
     || apt-get install -f -y
+
+# Add entrypoint for licensing and runtime setup
+COPY sf-entrypoint.sh /usr/local/bin/sf-entrypoint.sh
+RUN chmod +x /usr/local/bin/sf-entrypoint.sh
 
 # Create working directory for crawl outputs
 RUN mkdir -p /crawl
 WORKDIR /crawl
 
-# Set Java heap size for larger crawls
-ENV JAVA_OPTS="-Xmx2g"
-
-# Default command runs the spider in headless mode
-ENTRYPOINT ["screamingfrogseospider", "--headless"]
+# Default entrypoint applies license then executes the provided command
+ENTRYPOINT ["sf-entrypoint.sh"]
+CMD ["screamingfrogseospider", "--headless"]
 
 # Example usage:
 # docker build -t sf-crawler ./docker
-# docker run -v $(pwd)/crawl-output:/crawl sf-crawler --crawl https://example.com --export-tabs "Response Codes:All" --output-folder /crawl
+# docker run -e SF_LICENSE_NAME=YourName -e SF_LICENSE_KEY=YourKey -v $(pwd)/crawl-output:/crawl sf-crawler --crawl https://example.com --export-tabs "Response Codes:All" --output-folder /crawl
+

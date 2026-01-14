@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateCrawlId, startCrawl } from '@/lib/sf-crawler';
+import { generateCrawlId, hasRunningCrawl, startCrawl } from '@/lib/sf-crawler';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
     }
 
+    if (hasRunningCrawl()) {
+      return NextResponse.json({ error: 'Another crawl is already running' }, { status: 409 });
+    }
+
     const crawlId = generateCrawlId();
 
     // Start crawl in background
@@ -27,8 +31,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json(
-      { error: 'Failed to start crawl' },
+      { error: error instanceof Error ? error.message : 'Failed to start crawl' },
       { status: 500 }
     );
   }
 }
+
