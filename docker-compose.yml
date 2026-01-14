@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  sf-crawler:
+    build: ./docker
+    container_name: sf-crawler
+    volumes:
+      - ./crawl-output:/crawl
+    environment:
+      - JAVA_OPTS=-Xmx2g
+    # Keep container running for exec commands
+    command: ["sleep", "infinity"]
+    restart: unless-stopped
