@@ -53,12 +53,15 @@ jobs:
               --crawl "${{ inputs.siteUrl }}" \
               --headless \
               --save-crawl \
-              --export-tabs "Response Codes:All" \
+              --timestamped-output \
+              --overwrite \
+              --bulk-export "Response Codes:Internal & External:Redirection (3xx) Inlinks,Response Codes:Internal & External:Client Error (4xx) Inlinks" \
+              --save-report "Redirects:All Redirects" \
               --output-folder "/crawl"
 
-      - name: Upload CSV only
+      - name: Upload CSV outputs
         uses: actions/upload-artifact@v4
         with:
           name: sf-crawl-${{ inputs.crawlId }}
-          path: out/response_codes_all.csv
+          path: out/**/*.csv
           retention-days: 1

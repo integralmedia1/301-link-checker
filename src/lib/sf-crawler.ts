@@ -265,12 +265,12 @@ async function downloadCrawlCsv(runId: number, crawlId: string): Promise<string>
 
   const buffer = Buffer.from(await response.arrayBuffer());
   const zip = new AdmZip(buffer);
-  const entry = zip.getEntries().find((item: { entryName: string }) =>
-    item.entryName.endsWith('response_codes_all.csv')
-  );
+  const entry = zip
+    .getEntries()
+    .find((item: { entryName: string }) => isAllRedirectsCsv(item.entryName));
 
   if (!entry) {
-    throw new Error('response_codes_all.csv not found in artifact');
+    throw new Error('All Redirects CSV not found in artifact');
   }
 
   return entry.getData().toString('utf-8');
@@ -283,7 +283,16 @@ async function githubRequest<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message || `GitHub API error: ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  if ([204, 205, 304].includes(response.status)) {
+    return {} as T;
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return {} as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 async function githubFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -301,6 +310,20 @@ async function githubFetch(path: string, init: RequestInit = {}): Promise<Respon
   });
 }
 
+function isAllRedirectsCsv(entryName: string): boolean {
+  const lower = entryName.toLowerCase();
+  if (!lower.endsWith('.csv')) return false;
+
+  // Common report filename.
+  if (lower.endsWith('all_redirects.csv')) return true;
+
+  // Some exports include prefixes or folders.
+  if (lower.includes('all_redirects')) return true;
+
+  // Last-resort heuristic: "all redirects" report but avoid chain reports.
+  return lower.includes('redirect') && lower.includes('all') && !lower.includes('chain');
+}
+
 function parseCsvContent(csvContent: string): RedirectLink[] {
   const lines = csvContent.split('\n').filter((line) => line.trim());
 
@@ -309,26 +332,37 @@ function parseCsvContent(csvContent: string): RedirectLink[] {
   }
 
   const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
-  const addressIdx = headers.findIndex((h) => h === 'address');
-  const statusIdx = headers.findIndex((h) => h.includes('status'));
-  const redirectIdx = headers.findIndex((h) => h.includes('redirect url'));
+
+  const addressIdx = headers.findIndex((h) => ['address', 'source', 'from'].includes(h));
+  const statusCodeIdx = headers.findIndex((h) => h === 'status code' || h.includes('status code'));
+  const fallbackStatusIdx = statusCodeIdx >= 0 ? statusCodeIdx : headers.findIndex((h) => h === 'status');
+
+  const finalRedirectIdx = headers.findIndex((h) => h === 'final redirect url' || h.includes('final redirect url'));
+  const redirectIdx = headers.findIndex((h) => h === 'redirect url' || h.includes('redirect url'));
 
   const redirects: RedirectLink[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]);
-    const statusCode = parseInt(values[statusIdx], 10);
+    const statusCodeRaw = values[fallbackStatusIdx] ?? '';
+    const statusCode = parseInt(statusCodeRaw, 10);
 
-    if (statusCode === 301) {
-      redirects.push({
-        id: `redirect-${i}`,
-        sourceUrl: values[addressIdx] || '',
-        destUrl: values[redirectIdx] || '',
-        statusCode,
-        foundOnPages: [],
-        status: 'pending',
-      });
-    }
+    if (!Number.isFinite(statusCode)) continue;
+
+    // Filter out all 2xx (we only keep redirects here).
+    if (statusCode < 300 || statusCode >= 400) continue;
+
+    const sourceUrl = values[addressIdx] || '';
+    const destUrl = (finalRedirectIdx >= 0 ? values[finalRedirectIdx] : '') || (redirectIdx >= 0 ? values[redirectIdx] : '') || '';
+
+    redirects.push({
+      id: `redirect-${i}`,
+      sourceUrl,
+      destUrl,
+      statusCode,
+      foundOnPages: [],
+      status: 'pending',
+    });
   }
 
   return redirects;
